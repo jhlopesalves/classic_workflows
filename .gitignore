@@ -1,0 +1,264 @@
+# =======================
+# Python
+# =======================
+
+# Python virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+.conda/
+
+# Local vector DB / indexes
+**/chroma.sqlite3
+**/chroma.sqlite3-*
+**/chroma_books/
+**/.chroma/
+**/chroma_db/
+
+
+# Python environment configuration
+pyvenv.cfg
+pip-selfcheck.json
+.flake8
+.flake8
+.toml
+pyproject.toml
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+.lintr 
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# =======================
+# R
+# =======================
+
+# R workspace files
+.RData
+.Rhistory
+.Rapp.history
+.lintr
+
+# Session Data files
+.RDataTmp
+
+# User-specific files
+.Ruserdata
+
+# R Environment Variables
+.Renviron
+
+# R project files
+.Rproj.user/
+*.Rproj
+
+# R package development
+renv/
+renv.lock
+.Rprofile
+
+# pkgdown site
+docs/
+
+# translation temp files
+po/*~
+
+# =======================
+# Environment & Secrets
+# =======================
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# =======================
+# IDEs & Editors
+# =======================
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+*.code-workspace
+.editorconfig
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# =======================
+# OS Generated Files
+# =======================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+
+# =======================
+# Temporary & Log Files
+# =======================
+
+*.tmp
+*.temp
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# =======================
+# Project Specific
+# =======================
+
+# Configuration files (uncomment if you want to ignore these)
+pyrightconfig.json
+
+# Nested git repositories (these should not be tracked)
+temp_repo/
+**/temp_repo/
+
+# Custom rules
+.blackboxrules
+
+# =======================
+# Data Files (COMMENTED OUT AS REQUESTED)
+# =======================
+# Note: Data files in 'data/' folders are intentionally tracked
+# *.csv
+# *.json
+# *.xlsx
+# *.xls
+# data/
+pyproject.toml
