@@ -72,7 +72,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-.lintr 
+.lintr
 
 # Jupyter Notebook
 .ipynb_checkpoints/
@@ -261,4 +261,9 @@ temp_repo/
 # *.xlsx
 # *.xls
 # data/
+
+# Bulldozer dataset CSV files (large data files)
+supervised_learning/regression/bulldozer/data/*.csv
+supervised_learning/regression/bulldozer/data/*.xlsx
+
 pyproject.toml
