@@ -267,3 +267,19 @@ supervised_learning/regression/bulldozer/data/*.csv
 supervised_learning/regression/bulldozer/data/*.xlsx
 
 pyproject.toml
+supervised_learning/classification/titanic/catboost_info/learn_error.tsv
+supervised_learning/classification/titanic/catboost_info/learn_error.tsv
+supervised_learning/classification/titanic/catboost_info/time_left.tsv
+supervised_learning/classification/titanic/catboost_info/learn/events.out.tfevents
+supervised_learning/classification/titanic/catboost_info/catboost_training.json
+supervised_learning/classification/titanic/data/submission_logreg_bare.csv
+supervised_learning/classification/titanic/data/submission_logreg_full.csv
+supervised_learning/classification/titanic/data/submission_voting.csv
+supervised_learning/classification/titanic/data/submission.csv
+supervised_learning/classification/titanic/catboost_info/learn/events.out.tfevents
+supervised_learning/classification/titanic/catboost_info/time_left.tsv
+supervised_learning/classification/titanic/catboost_info/learn_error.tsv
+supervised_learning/classification/titanic/catboost_info/catboost_training.json
+
+# Catboost
+catboost_info/
