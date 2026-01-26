@@ -283,3 +283,6 @@ supervised_learning/classification/titanic/catboost_info/catboost_training.json
 
 # Catboost
 catboost_info/
+
+# Data files
+LLM/book_recommender/data/GoodReads_100k_books.csv
