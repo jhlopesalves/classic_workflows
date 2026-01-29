@@ -9,7 +9,7 @@ from numpy.typing import ArrayLike
 from sklearn.base import BaseEstimator, clone
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import average_precision_score, confusion_matrix, precision_recall_curve, roc_auc_score, roc_curve
-from sklearn.model_selection import StratifiedKFold, cross_validate
+from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
 
 
@@ -31,30 +31,30 @@ def plot_classifier_metrics(
 	Parameters
 	----------
 	X : DataFrame or array-like
-	    Feature matrix.
+		Feature matrix.
 	y : array-like
-	    True labels.
+		True labels.
 	estimator : BaseEstimator
-	    Unfitted scikit-learn estimator (cloned for each fold).
+		Unfitted scikit-learn estimator (cloned for each fold).
 	cv : int, default=5
-	    Number of cross-validation folds.
+		Number of cross-validation folds.
 	threshold : float or None, default=None
-	    Probability threshold for class assignment. If None, uses
-	    estimator.predict().
+		Probability threshold for class assignment. If None, uses
+		estimator.predict().
 	random_state : int, default=42
-	    Random state for reproducibility.
+		Random state for reproducibility.
 
 	Returns
 	-------
 	dict[str, float]
-	    Dictionary with mean_auc, std_auc, mean_ap, std_ap.
+		Dictionary with mean_auc, std_auc, mean_ap, std_ap.
 	"""
 
-	# Type Checks
+	#  Type Checks
 	if not isinstance(y, (np.ndarray, pd.DataFrame, pd.Series, list)):
 		raise TypeError(f"y must be array-like, got {type(y).__name__}")
 	if not isinstance(X, (np.ndarray, pd.DataFrame, pd.Series)):
-		raise TypeError(f"X must be either an Array, a DataFrame or a Series, got {type(X).__name__}")
+		raise TypeError(f"X must be an Array, DataFrame or Series, got {type(X).__name__}")
 	if not isinstance(estimator, BaseEstimator):
 		raise TypeError(f"estimator must be a Scikit-Learn Estimator, got {type(estimator).__name__}")
 	if threshold is not None:
@@ -64,8 +64,6 @@ def plot_classifier_metrics(
 	y_array = np.asarray(y)
 
 	# Ensure Probabilities Exist
-	# We inspect the estimator (or the final step of a pipeline)
-	# If it lacks 'predict_proba', we wrap it in CalibratedClassifierCV.
 	model_to_plot = clone(estimator)
 	final_estimator = model_to_plot.steps[-1][1] if isinstance(model_to_plot, Pipeline) else model_to_plot
 
@@ -76,70 +74,60 @@ def plot_classifier_metrics(
 	# Plotting Setup
 	fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(16, 5))
 
-	# Initialize containers for CV results
 	cms: list[np.ndarray] = []
 	tprs: list[np.ndarray] = []
 	aucs: list[float] = []
 	precisions_list: list[np.ndarray] = []
 	aps: list[float] = []
 
-	# Common interpolation points
 	mean_fpr = np.linspace(0, 1, 100)
 	mean_recall = np.linspace(0, 1, 100)
 
-	# Perform cross-validation
 	skf = StratifiedKFold(n_splits=cv, shuffle=True, random_state=random_state)
 	unknown_category_columns: set[int] = set()
 
-	# Custom warning filter
 	with warnings.catch_warnings(record=True) as caught_warnings:
 		warnings.filterwarnings("always", category=UserWarning, module="sklearn")
 
 		for train_idx, val_idx in skf.split(X, y_array):
-			# Split data
-			if isinstance(X, pd.DataFrame):
+			# --- FIX IS HERE ---
+			# Use .iloc for both DataFrame AND Series
+			if isinstance(X, (pd.DataFrame, pd.Series)):
 				X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
 			else:
+				# Numpy arrays use standard integer indexing
 				X_train, X_val = X[train_idx], X[val_idx]
 
 			y_train, y_val = y_array[train_idx], y_array[val_idx]
 
-			# Clone and fit the (potentially wrapped) estimator
+			# Clone and fit
 			fold_estimator = clone(model_to_plot)
 			fold_estimator.fit(X_train, y_train)
 
-			# Get probabilities (Safe now due to the Safety Valve)
 			y_proba = fold_estimator.predict_proba(X_val)[:, 1]
 
-			# Class predictions
 			if threshold is None:
 				y_pred = fold_estimator.predict(X_val)
 			else:
 				y_pred = (y_proba >= float(threshold)).astype(int)
 
-			# Confusion matrix (normalised)
+			# Metrics
 			cm = confusion_matrix(y_true=y_val, y_pred=y_pred, normalize="true")
 			cms.append(cm)
 
-			# ROC curve
 			fpr, tpr, _ = roc_curve(y_true=y_val, y_score=y_proba)
 			roc_auc = roc_auc_score(y_true=y_val, y_score=y_proba)
-
 			interp_tpr = np.interp(mean_fpr, fpr, tpr)
 			interp_tpr[0] = 0.0
 			tprs.append(interp_tpr)
 			aucs.append(float(roc_auc))
 
-			# Precision-Recall curve
-			precision, recall, _ = precision_recall_curve(y_true=y_val, y_score=y_proba)
+			precision, recall, _ = precision_recall_curve(y_true=y_val, probas_pred=y_proba)
 			avg_precision = average_precision_score(y_true=y_val, y_score=y_proba)
-
-			# Interpolate precision
 			interp_precision = np.interp(mean_recall, recall[::-1], precision[::-1])
 			precisions_list.append(interp_precision)
 			aps.append(float(avg_precision))
 
-		# Process warnings
 		for warning in caught_warnings:
 			message = str(warning.message).lower()
 			if "unknown categories" in message:
@@ -148,122 +136,35 @@ def plot_classifier_metrics(
 					cols = match.group(1).split(",")
 					unknown_category_columns.update([int(c.strip()) for c in cols])
 
-	# Display custom warning if unknown categories were found
 	if unknown_category_columns:
 		cols_list = sorted(list(unknown_category_columns))
 		print(f"Unknown categories found in columns {cols_list} will be encoded as zeros.")
 
-	# Plot 1: Mean Confusion Matrix
+	# Plotting
 	mean_cm = np.mean(cms, axis=0)
 	std_cm = np.std(cms, axis=0)
-
-	# Create annotation labels with mean ± std
 	annot_labels = np.array([[f"{mean_cm[row, col]:.1%}\n(±{std_cm[row, col]:.1%})" for col in range(2)] for row in range(2)])
 
-	cm_df = pd.DataFrame(
-		data=mean_cm,
-		index=["Actual Neg", "Actual Pos"],
-		columns=["Pred Neg", "Pred Pos"],
-	)
+	cm_df = pd.DataFrame(mean_cm, index=["Actual Neg", "Actual Pos"], columns=["Pred Neg", "Pred Pos"])
 
-	sns.heatmap(
-		data=cm_df,
-		annot=annot_labels,
-		fmt="",
-		cmap="Blues",
-		cbar_kws={"label": "Proportion"},
-		ax=axes[0],
-		vmin=0,
-		vmax=1,
-	)
-	axes[0].set_title(f"Mean Confusion Matrix\n({cv}-Fold CV, Row-Normalised)", fontsize=11, pad=9)
-	axes[0].set_xlabel("Predicted Label")
-	axes[0].set_ylabel("True Label")
+	sns.heatmap(data=cm_df, annot=annot_labels, fmt="", cmap="Blues", ax=axes[0], vmin=0, vmax=1)
+	axes[0].set_title(f"Mean Confusion Matrix\n({cv}-Fold CV)", fontsize=11)
 
-	# Plot 2: Mean ROC Curve
 	mean_tpr = np.mean(tprs, axis=0)
 	mean_tpr[-1] = 1.0
-	std_tpr = np.std(tprs, axis=0)
 	mean_auc = float(np.mean(aucs))
-	std_auc = float(np.std(aucs))
+	axes[1].plot(mean_fpr, mean_tpr, color="darkorange", label=f"Mean ROC (AUC = {mean_auc:.3f})")
+	axes[1].plot([0, 1], [0, 1], linestyle="--", color="navy")
+	axes[1].set_title("Mean ROC Curve")
+	axes[1].legend()
 
-	axes[1].plot(
-		mean_fpr,
-		mean_tpr,
-		color="darkorange",
-		linewidth=2.5,
-		label=f"Mean ROC (AUC = {mean_auc:.3f} ± {std_auc:.3f})",
-	)
-
-	axes[1].fill_between(
-		mean_fpr,
-		np.maximum(mean_tpr - std_tpr, 0),
-		np.minimum(mean_tpr + std_tpr, 1),
-		color="darkorange",
-		alpha=0.2,
-		label="± 1 std. dev.",
-	)
-
-	axes[1].plot(
-		[0, 1],
-		[0, 1],
-		color="navy",
-		linestyle="--",
-		alpha=0.5,
-		label="Chance (AUC = 0.5)",
-	)
-	axes[1].set_title(f"Mean ROC Curve ({cv}-Fold CV)", fontsize=11, pad=9)
-	axes[1].set_xlabel("False Positive Rate (1 - Specificity)")
-	axes[1].set_ylabel("True Positive Rate (Sensitivity)")
-	axes[1].set_xlim([-0.02, 1.02])
-	axes[1].set_ylim([-0.02, 1.02])
-	axes[1].legend(loc="lower right", frameon=True, fancybox=True, shadow=True)
-	axes[1].grid(True, alpha=0.4, linewidth=0.4, color="grey")
-
-	# Plot 3: Mean Precision-Recall Curve
 	mean_precision = np.mean(precisions_list, axis=0)
-	std_precision = np.std(precisions_list, axis=0)
 	mean_ap = float(np.mean(aps))
-	std_ap = float(np.std(aps))
+	axes[2].plot(mean_recall, mean_precision, color="green", label=f"Mean PR (AP = {mean_ap:.3f})")
+	axes[2].set_title("Mean PR Curve")
+	axes[2].legend()
 
-	axes[2].plot(
-		mean_recall,
-		mean_precision,
-		color="forestgreen",
-		linewidth=2.5,
-		label=f"Mean PR (AP = {mean_ap:.3f} ± {std_ap:.3f})",
-	)
-
-	axes[2].fill_between(
-		mean_recall,
-		np.maximum(mean_precision - std_precision, 0),
-		np.minimum(mean_precision + std_precision, 1),
-		color="forestgreen",
-		alpha=0.2,
-		label="± 1 std. dev.",
-	)
-
-	# Baseline prevalence
-	baseline = float(np.mean(y_array))
-	axes[2].axhline(
-		y=baseline,
-		color="dimgrey",
-		linestyle="--",
-		linewidth=2,
-		alpha=0.7,
-		label=f"Baseline (Prevalence = {baseline:.3f})",
-	)
-
-	axes[2].set_title(f"Mean Precision-Recall Curve ({cv}-Fold CV)", fontsize=11, pad=9)
-	axes[2].set_xlabel("Recall (Sensitivity)")
-	axes[2].set_ylabel("Precision (PPV)")
-	axes[2].set_xlim([-0.02, 1.02])
-	axes[2].set_ylim([0.0, 1.05])
-	axes[2].legend(loc="best", frameon=True, fancybox=True, shadow=True)
-	axes[2].grid(True, alpha=0.4, linewidth=0.4, color="grey")
-
-	# Final Plot Titling
-	# Extract model name
+	# Final Titling
 	if hasattr(estimator, "named_steps") and "model" in estimator.named_steps:
 		model_name = estimator.named_steps["model"].__class__.__name__
 	elif hasattr(estimator, "steps"):
@@ -280,12 +181,7 @@ def plot_classifier_metrics(
 	plt.tight_layout()
 	plt.show()
 
-	return {
-		"mean_auc": mean_auc,
-		"std_auc": std_auc,
-		"mean_ap": mean_ap,
-		"std_ap": std_ap,
-	}
+	return {"mean_auc": mean_auc, "mean_ap": mean_ap}
 
 
 def evaluate_candidates_cls(
