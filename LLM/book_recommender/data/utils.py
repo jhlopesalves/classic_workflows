@@ -9,8 +9,9 @@ from numpy.typing import ArrayLike
 from sklearn.base import BaseEstimator, clone
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import average_precision_score, confusion_matrix, precision_recall_curve, roc_auc_score, roc_curve
-from sklearn.model_selection import StratifiedKFold, cross_validate
+from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import LabelEncoder
 
 
 def plot_classifier_metrics(
@@ -21,7 +22,7 @@ def plot_classifier_metrics(
 	cv: int = 5,
 	threshold: float | None = None,
 	random_state: int = 42,
-) -> dict[str, float]:
+) -> None:
 	"""
 	Evaluate binary classification using cross-validation.
 
@@ -31,26 +32,26 @@ def plot_classifier_metrics(
 	Parameters
 	----------
 	X : DataFrame or array-like
-		Feature matrix.
+	    Feature matrix.
 	y : array-like
-		True labels.
+	    True labels (can be strings or numeric).
 	estimator : BaseEstimator
-		Unfitted scikit-learn estimator (cloned for each fold).
+	    Unfitted scikit-learn estimator (cloned for each fold).
 	cv : int, default=5
-		Number of cross-validation folds.
+	    Number of cross-validation folds.
 	threshold : float or None, default=None
-		Probability threshold for class assignment. If None, uses
-		estimator.predict().
+	    Probability threshold for class assignment. If None, uses
+	    estimator.predict().
 	random_state : int, default=42
-		Random state for reproducibility.
+	    Random state for reproducibility.
 
 	Returns
 	-------
 	dict[str, float]
-		Dictionary with mean_auc, std_auc, mean_ap, std_ap.
+	    Dictionary with mean_auc, std_auc, mean_ap, std_ap.
 	"""
 
-	#  Type Checks
+	# Type Checks
 	if not isinstance(y, (np.ndarray, pd.DataFrame, pd.Series, list)):
 		raise TypeError(f"y must be array-like, got {type(y).__name__}")
 	if not isinstance(X, (np.ndarray, pd.DataFrame, pd.Series)):
@@ -61,14 +62,18 @@ def plot_classifier_metrics(
 		if not isinstance(threshold, (int, float)) or not (0.0 <= float(threshold) <= 1.0):
 			raise ValueError(f"threshold must be in [0, 1], got {threshold}")
 
-	y_array = np.asarray(y)
+	# Encode labels to 0/1 (required for ROC/PR curves)
+	label_encoder = LabelEncoder()
+	y_encoded = label_encoder.fit_transform(np.asarray(y))
+	class_names = label_encoder.classes_  # e.g., ['Fiction', 'Nonfiction']
+	pos_class_name = class_names[1]  # The class encoded as 1
 
 	# Ensure Probabilities Exist
 	model_to_plot = clone(estimator)
 	final_estimator = model_to_plot.steps[-1][1] if isinstance(model_to_plot, Pipeline) else model_to_plot
 
 	if not hasattr(final_estimator, "predict_proba"):
-		print(f"Notice: {final_estimator.__class__.__name__} lacks 'predict_proba'. Wrapping in CalibratedClassifierCV (isotonic calibration).")
+		print(f"Notice: {final_estimator.__class__.__name__} lacks 'predict_proba'. Wrapping in CalibratedClassifierCV.")
 		model_to_plot = CalibratedClassifierCV(model_to_plot, method="isotonic", cv=3)
 
 	# Plotting Setup
@@ -89,45 +94,59 @@ def plot_classifier_metrics(
 	with warnings.catch_warnings(record=True) as caught_warnings:
 		warnings.filterwarnings("always", category=UserWarning, module="sklearn")
 
-		for train_idx, val_idx in skf.split(X, y_array):
-			# --- FIX IS HERE ---
-			# Use .iloc for both DataFrame AND Series
+		for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X, y_encoded)):
+			# Handle indexing for DataFrame/Series vs numpy arrays
 			if isinstance(X, (pd.DataFrame, pd.Series)):
 				X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
 			else:
-				# Numpy arrays use standard integer indexing
 				X_train, X_val = X[train_idx], X[val_idx]
 
-			y_train, y_val = y_array[train_idx], y_array[val_idx]
+			# Use ORIGINAL labels for training (model expects original label format)
+			y_original = np.asarray(y)
+			y_train_orig, y_val_orig = y_original[train_idx], y_original[val_idx]
 
-			# Clone and fit
+			# Encoded labels for metrics
+			y_val_enc = y_encoded[val_idx]
+
+			# Clone and fit with original labels
 			fold_estimator = clone(model_to_plot)
-			fold_estimator.fit(X_train, y_train)
+			fold_estimator.fit(X_train, y_train_orig)
 
-			y_proba = fold_estimator.predict_proba(X_val)[:, 1]
+			# Get probabilities - need to find which column corresponds to pos_label
+			y_proba_all = fold_estimator.predict_proba(X_val)
 
+			# Find index of positive class in estimator's classes_
+			estimator_classes = fold_estimator.classes_
+			pos_idx = np.where(estimator_classes == pos_class_name)[0][0]
+			y_proba = y_proba_all[:, pos_idx]
+
+			# Get predictions
 			if threshold is None:
-				y_pred = fold_estimator.predict(X_val)
+				y_pred_orig = fold_estimator.predict(X_val)
+				y_pred = label_encoder.transform(y_pred_orig)
 			else:
 				y_pred = (y_proba >= float(threshold)).astype(int)
 
-			# Metrics
-			cm = confusion_matrix(y_true=y_val, y_pred=y_pred, normalize="true")
+			# Confusion Matrix (using encoded labels)
+			cm = confusion_matrix(y_true=y_val_enc, y_pred=y_pred, normalize="true")
 			cms.append(cm)
 
-			fpr, tpr, _ = roc_curve(y_true=y_val, y_score=y_proba)
-			roc_auc = roc_auc_score(y_true=y_val, y_score=y_proba)
+			# ROC Curve (using encoded labels - now numeric!)
+			fpr, tpr, _ = roc_curve(y_true=y_val_enc, y_score=y_proba)
+			roc_auc = roc_auc_score(y_true=y_val_enc, y_score=y_proba)
 			interp_tpr = np.interp(mean_fpr, fpr, tpr)
 			interp_tpr[0] = 0.0
 			tprs.append(interp_tpr)
 			aucs.append(float(roc_auc))
 
-			precision, recall, _ = precision_recall_curve(y_true=y_val, probas_pred=y_proba)
-			avg_precision = average_precision_score(y_true=y_val, y_score=y_proba)
+			# Precision-Recall Curve
+			precision, recall, _ = precision_recall_curve(y_true=y_val_enc, probas_pred=y_proba)
+			avg_precision = average_precision_score(y_true=y_val_enc, y_score=y_proba)
 			interp_precision = np.interp(mean_recall, recall[::-1], precision[::-1])
 			precisions_list.append(interp_precision)
 			aps.append(float(avg_precision))
 
+		# Check for unknown category warnings
 		for warning in caught_warnings:
 			message = str(warning.message).lower()
 			if "unknown categories" in message:
@@ -138,33 +157,51 @@ def plot_classifier_metrics(
 
 	if unknown_category_columns:
 		cols_list = sorted(list(unknown_category_columns))
-		print(f"Unknown categories found in columns {cols_list} will be encoded as zeros.")
+		print(f"Warning: Unknown categories in columns {cols_list} encoded as zeros.")
 
-	# Plotting
+	# === PLOTTING ===
+
+	# 1. Confusion Matrix
 	mean_cm = np.mean(cms, axis=0)
 	std_cm = np.std(cms, axis=0)
 	annot_labels = np.array([[f"{mean_cm[row, col]:.1%}\n(±{std_cm[row, col]:.1%})" for col in range(2)] for row in range(2)])
-
-	cm_df = pd.DataFrame(mean_cm, index=["Actual Neg", "Actual Pos"], columns=["Pred Neg", "Pred Pos"])
-
+	cm_df = pd.DataFrame(mean_cm, index=[f"Actual: {class_names[0]}", f"Actual: {class_names[1]}"], columns=[f"Pred: {class_names[0]}", f"Pred: {class_names[1]}"])
 	sns.heatmap(data=cm_df, annot=annot_labels, fmt="", cmap="Blues", ax=axes[0], vmin=0, vmax=1)
 	axes[0].set_title(f"Mean Confusion Matrix\n({cv}-Fold CV)", fontsize=11)
 
+	# 2. ROC Curve
 	mean_tpr = np.mean(tprs, axis=0)
 	mean_tpr[-1] = 1.0
+	std_tpr = np.std(tprs, axis=0)
 	mean_auc = float(np.mean(aucs))
-	axes[1].plot(mean_fpr, mean_tpr, color="darkorange", label=f"Mean ROC (AUC = {mean_auc:.3f})")
-	axes[1].plot([0, 1], [0, 1], linestyle="--", color="navy")
+	std_auc = float(np.std(aucs))
+
+	axes[1].plot(mean_fpr, mean_tpr, color="darkorange", lw=2, label=f"Mean ROC (AUC = {mean_auc:.3f} ± {std_auc:.3f})")
+	axes[1].fill_between(mean_fpr, mean_tpr - std_tpr, mean_tpr + std_tpr, color="orange", alpha=0.2)
+	axes[1].plot([0, 1], [0, 1], linestyle="--", color="navy", lw=1.5, label="Random Classifier")
+	axes[1].set_xlabel("False Positive Rate")
+	axes[1].set_ylabel("True Positive Rate")
 	axes[1].set_title("Mean ROC Curve")
-	axes[1].legend()
+	axes[1].legend(loc="lower right")
+	axes[1].set_xlim([0.0, 1.0])
+	axes[1].set_ylim([0.0, 1.05])
 
+	# 3. Precision-Recall Curve
 	mean_precision = np.mean(precisions_list, axis=0)
+	std_precision = np.std(precisions_list, axis=0)
 	mean_ap = float(np.mean(aps))
-	axes[2].plot(mean_recall, mean_precision, color="green", label=f"Mean PR (AP = {mean_ap:.3f})")
-	axes[2].set_title("Mean PR Curve")
-	axes[2].legend()
+	std_ap = float(np.std(aps))
 
-	# Final Titling
+	axes[2].plot(mean_recall, mean_precision, color="green", lw=2, label=f"Mean PR (AP = {mean_ap:.3f} ± {std_ap:.3f})")
+	axes[2].fill_between(mean_recall, mean_precision - std_precision, mean_precision + std_precision, color="green", alpha=0.2)
+	axes[2].set_xlabel("Recall")
+	axes[2].set_ylabel("Precision")
+	axes[2].set_title("Mean Precision-Recall Curve")
+	axes[2].legend(loc="lower left")
+	axes[2].set_xlim([0.0, 1.0])
+	axes[2].set_ylim([0.0, 1.05])
+
+	# Final Title
 	if hasattr(estimator, "named_steps") and "model" in estimator.named_steps:
 		model_name = estimator.named_steps["model"].__class__.__name__
 	elif hasattr(estimator, "steps"):
@@ -174,14 +211,12 @@ def plot_classifier_metrics(
 
 	threshold_text = "" if threshold is None else f" | threshold={float(threshold):.2f}"
 	plt.suptitle(
-		f"Binary Classification: {model_name} ({cv}-Fold Cross-Validation){threshold_text}",
+		f"Binary Classification: {model_name} ({cv}-Fold CV){threshold_text}",
 		fontsize=14,
 		fontweight="bold",
 	)
 	plt.tight_layout()
 	plt.show()
-
-	return {"mean_auc": mean_auc, "mean_ap": mean_ap}
 
 
 def evaluate_candidates_cls(
