@@ -10,24 +10,8 @@ from sklearn.base import BaseEstimator, clone
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import average_precision_score, confusion_matrix, precision_recall_curve, roc_auc_score, roc_curve
 from sklearn.model_selection import StratifiedKFold, cross_validate
-from sklearn.pipeline import make_pipeline, Pipeline
-
-
-import re
-import warnings
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import seaborn as sns
-from numpy.typing import ArrayLike
-from sklearn.base import BaseEstimator, clone
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.metrics import (
-    average_precision_score, confusion_matrix,
-    precision_recall_curve, roc_auc_score, roc_curve
-)
-from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
+
 
 def plot_classifier_metrics(
     X: pd.DataFrame | ArrayLike,
@@ -69,7 +53,7 @@ def plot_classifier_metrics(
     # Type Checks
     if not isinstance(y, (np.ndarray, pd.DataFrame, pd.Series, list)):
         raise TypeError(f"y must be array-like, got {type(y).__name__}")
-    if not isinstance(X, (np.ndarray, pd.DataFrame)):
+    if not isinstance(X, (np.ndarray, pd.DataFrame, pd.Series)):
         raise TypeError(f"X must be either an Array or a DataFrame, got {type(X).__name__}")
     if not isinstance(estimator, BaseEstimator):
         raise TypeError(f"estimator must be a Scikit-Learn Estimator, got {type(estimator).__name__}")
