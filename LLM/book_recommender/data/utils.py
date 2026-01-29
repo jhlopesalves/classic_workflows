@@ -9,7 +9,7 @@ from numpy.typing import ArrayLike
 from sklearn.base import BaseEstimator, clone
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import average_precision_score, confusion_matrix, precision_recall_curve, roc_auc_score, roc_curve
-from sklearn.model_selection import StratifiedKFold, cross_validate
+from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 
@@ -22,9 +22,9 @@ def plot_classifier_metrics(
 	cv: int = 5,
 	threshold: float | None = None,
 	random_state: int = 42,
-) -> None:
+) -> dict[str, float]:
 	"""
-	Evaluate binary classification using cross-validation.
+	Evaluate binary classification using cross-validation and plot metrics.
 
 	Automatically wraps non-probabilistic estimators (like LinearSVC)
 	in CalibratedClassifierCV to enable ROC/PR plotting.
@@ -91,6 +91,9 @@ def plot_classifier_metrics(
 	skf = StratifiedKFold(n_splits=cv, shuffle=True, random_state=random_state)
 	unknown_category_columns: set[int] = set()
 
+	# Pre-convert y to array once (avoid repeated conversions)
+	y_original = np.asarray(y)
+
 	with warnings.catch_warnings(record=True) as caught_warnings:
 		warnings.filterwarnings("always", category=UserWarning, module="sklearn")
 
@@ -102,7 +105,6 @@ def plot_classifier_metrics(
 				X_train, X_val = X[train_idx], X[val_idx]
 
 			# Use ORIGINAL labels for training (model expects original label format)
-			y_original = np.asarray(y)
 			y_train_orig, y_val_orig = y_original[train_idx], y_original[val_idx]
 
 			# Encoded labels for metrics
@@ -217,6 +219,14 @@ def plot_classifier_metrics(
 	)
 	plt.tight_layout()
 	plt.show()
+
+	# Return metrics dictionary
+	return {
+		"mean_auc": mean_auc,
+		"std_auc": std_auc,
+		"mean_ap": mean_ap,
+		"std_ap": std_ap,
+	}
 
 
 def evaluate_candidates_cls(
