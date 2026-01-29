@@ -13,7 +13,7 @@ from sklearn.model_selection import StratifiedKFold, cross_validate
 from sklearn.pipeline import make_pipeline, Pipeline
 
 
-def classification_evaluation(
+def plot_classifier_metrics(
 	X: pd.DataFrame | ArrayLike,
 	y: ArrayLike,
 	estimator: BaseEstimator,
