@@ -14,7 +14,7 @@ from sklearn.pipeline import Pipeline
 
 
 def plot_classifier_metrics(
-	X: pd.DataFrame | ArrayLike,
+	X: pd.DataFrame | pd.Series | ArrayLike,
 	y: ArrayLike,
 	estimator: BaseEstimator,
 	*,
