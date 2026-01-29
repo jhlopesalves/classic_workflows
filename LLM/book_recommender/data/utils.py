@@ -7,6 +7,7 @@ import pandas as pd
 import seaborn as sns
 from numpy.typing import ArrayLike
 from sklearn.base import BaseEstimator, clone
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import average_precision_score, confusion_matrix, precision_recall_curve, roc_auc_score, roc_curve
 from sklearn.model_selection import StratifiedKFold, cross_validate
 
@@ -293,9 +294,12 @@ def evaluate_candidates_cls(
 	"""
 	Evaluates multiple classification models using Stratified K-Fold cross-validation.
 
+	Automatically handles models that do not natively support probability estimates
+	(e.g., LinearSVC, RidgeClassifier) by wrapping them in CalibratedClassifierCV.
+
 	Parameters
 	----------
-	candidates : dict
+	candidates : dict[str, BaseEstimator]
 	    Dictionary mapping model names to sklearn estimators/pipelines.
 	X : array-like
 	    Feature matrix.
@@ -304,7 +308,7 @@ def evaluate_candidates_cls(
 	n_splits : int, optional
 	    Number of cross-validation folds, by default 5.
 	sort_by : str, optional
-	    Metric to sort the results by (e.g., 'test_roc_auc', 'test_f1'),
+	    Metric to sort the results by (e.g., 'test_roc_auc', 'test_accuracy'),
 	    by default "test_roc_auc".
 	n_jobs : int, optional
 	    Number of jobs to run in parallel, by default -1.
@@ -314,13 +318,14 @@ def evaluate_candidates_cls(
 	Returns
 	-------
 	pd.DataFrame
-	    A DataFrame containing the mean and std of the specified metrics for each model.
+	    A DataFrame containing the mean and std of the specified metrics.
 	"""
-	# Use StratifiedKFold for classification to maintain class balance in folds
+
+	# 1. Setup Cross-Validation Strategy
 	cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
 
-	# Define classification metrics
-	# Note: 'roc_auc' requires the model to support predict_proba or decision_function
+	# 2. Define Metrics
+	# Note: 'roc_auc' and 'neg_log_loss' strictly require probabilities.
 	scoring = {
 		"roc_auc": "roc_auc",
 		"accuracy": "accuracy",
@@ -330,25 +335,41 @@ def evaluate_candidates_cls(
 
 	results_list = []
 
-	for name, model in candidates.items():
+	for name, estimator in candidates.items():
 		if verbose:
 			print(f"Evaluating {name}...")
 
-		# cross_validate handles the splitting and scoring
-		cv_results = cross_validate(model, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs, return_train_score=True)
+		# 3. Probability Handling (The "Safety Valve")
+		# We work on a clone to avoid mutating the user's original dictionary
+		model_to_eval = clone(estimator)
 
+		# Check if the model (or the final step of a pipeline) has predict_proba
+		# If not, we wrap it in CalibratedClassifierCV to force probability output.
+		final_estimator = model_to_eval.steps[-1][1] if isinstance(model_to_eval, Pipeline) else model_to_eval
+
+		has_proba = hasattr(final_estimator, "predict_proba")
+
+		# Edge case: SVC has the method but it might be False; LinearSVC never has it.
+		# If it's strictly missing, we wrap it.
+		if not has_proba:
+			if verbose:
+				print(f"  -> {name} lacks native 'predict_proba'. Wrapping in CalibratedClassifierCV (this may be slow).")
+			# CalibratedClassifierCV uses its own internal CV to estimate probs
+			model_to_eval = CalibratedClassifierCV(model_to_eval)
+
+		# 4. Run Cross-Validation
+		cv_results = cross_validate(model_to_eval, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs, return_train_score=True)
+
+		# 5. Process Results
 		row = {"Model": name}
 		for metric_key, scores in cv_results.items():
-			# Skip timing metrics for the clean table
 			if "time" in metric_key:
 				continue
 
-			# Determine the base metric name (e.g., "test_log_loss" -> "log_loss")
-			# This helps look up if we need to flip the sign
+			# Clean up metric names (e.g. "test_log_loss")
 			base_metric = metric_key.replace("test_", "").replace("train_", "")
 
-			# Check if the original sklearn scorer string starts with "neg_"
-			# If so, flip the sign to make it positive (e.g., Log Loss)
+			# Flip negative scores (Log Loss) to be positive/readable
 			scorer_name = scoring.get(base_metric, "")
 			mean_score = scores.mean()
 
@@ -360,13 +381,13 @@ def evaluate_candidates_cls(
 
 		results_list.append(row)
 
+	# 6. Formatting Output
 	df = pd.DataFrame(results_list)
 
-	# Dynamic sort column finding
-	# Default to the passed sort_by, strictly looking for the (mean) column
+	# Locate the column to sort by (handling the "(mean)" suffix automatically)
 	sort_col = next((c for c in df.columns if sort_by in c and "(mean)" in c), "test_roc_auc (mean)")
 
-	# Determine sort order: usually higher is better, except for Log Loss
+	# Log Loss is "lower is better", everything else is "higher is better"
 	ascending = "log_loss" in sort_by
 
 	return df.sort_values(sort_col, ascending=ascending).reset_index(drop=True)
